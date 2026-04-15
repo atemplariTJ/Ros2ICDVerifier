@@ -13,6 +13,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gui.table_model import TopicTableModel
 from core.csv_parser import load_icd_from_csv
 from config.settings import ValidationStatus
+from PyQt6.QtWidgets import QMessageBox
+from ros2.worker import Ros2Worker
 
 class MainWindow(QMainWindow):
     def __init__(self):
