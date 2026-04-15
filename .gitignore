@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+icd_ws/build/
+icd_ws/install/
+icd_ws/log/
+.DS_Store
+.vscode/

@@ -1,0 +1,8 @@
+Topic,Src,Dst,Type,Qos,Hz
+/camera/image_raw,camera_node,"perception, recorder",sensor_msgs/Image,BestEffort,30
+/cmd_vel,nav_node,base_controller,geometry_msgs/Twist,Reliable,20
+/vla_model/action,vla_inference,task_planner,std_msgs/String,Reliable,10
+/battery_state,battery_monitor,"diagnostics, dashboard",sensor_msgs/BatteryState,Reliable,1
+/lidar/scan,lidar_driver,"mapping_node, obstacle_avoidance",sensor_msgs/LaserScan,BestEffort,15
+/fleet/sync,ROBOT_01(ID),"ROBOT_02(ID), ROBOT_03(ID), ROBOT_04(ID)",custom_msgs/Sync,Reliable,5
+/custom/data_test,1(ID),"2(ID), 3(ID)",icd_custom_msgs/CustomData,Reliable,10

@@ -1,0 +1,243 @@
+import sys
+import os
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+    QLabel, QTableView, QHeaderView, QTextEdit, QFileDialog, QFrame,
+    QAbstractItemView
+)
+from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtGui import QFont, QColor, QPalette
+
+# Add parent dir to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from gui.table_model import TopicTableModel
+from core.csv_parser import load_icd_from_csv
+from config.settings import ValidationStatus
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("ROS2 ICD 검증 대시보드")
+        self.resize(1200, 800)
+        
+        self.topics = []
+        self.selected_topic_id = None
+        self.worker = None
+        
+        self.setup_ui()
+
+    def setup_ui(self):
+        # Main widget and layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 1. Header (Buttons)
+        header_layout = QHBoxLayout()
+        
+        title_label = QLabel("ROS2 ICD 검증 대시보드 (다중 Dst 지원)")
+        title_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+
+        self.btn_load_csv = QPushButton("CSV 불러오기 (초기화)")
+        self.btn_start = QPushButton("검증 시작")
+        self.btn_stop = QPushButton("검증 중지")
+        self.btn_report = QPushButton("보고서 저장")
+        
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self.btn_report.setEnabled(False)
+
+        self.btn_load_csv.clicked.connect(self.load_csv)
+        self.btn_start.clicked.connect(self.start_validation)
+        self.btn_stop.clicked.connect(self.stop_validation)
+        # self.btn_report.clicked.connect(...)
+
+        for btn in [self.btn_load_csv, self.btn_start, self.btn_stop, self.btn_report]:
+            btn.setMinimumHeight(35)
+            header_layout.addWidget(btn)
+
+        main_layout.addLayout(header_layout)
+
+        # 2. Summary Panel
+        summary_layout = QHBoxLayout()
+        self.lbl_total = self.create_summary_card("전체 토픽", "0개", "#eff6ff", "#1d4ed8")
+        self.lbl_pass = self.create_summary_card("정상 (Pass)", "0개", "#dcfce7", "#15803d")
+        self.lbl_fail = self.create_summary_card("오류 (Fail)", "0개", "#fee2e2", "#b91c1c")
+        
+        summary_layout.addWidget(self.lbl_total)
+        summary_layout.addWidget(self.lbl_pass)
+        summary_layout.addWidget(self.lbl_fail)
+        main_layout.addLayout(summary_layout)
+
+        # 3. Main Table
+        self.table_view = QTableView()
+        self.table_model = TopicTableModel()
+        self.table_view.setModel(self.table_model)
+        
+        # Table UI settings
+        self.table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table_view.verticalHeader().setVisible(False)
+        self.table_view.setAlternatingRowColors(True)
+        self.table_view.setStyleSheet("alternate-background-color: #f9fafb; background-color: #ffffff; color: #000000;")
+        
+        header = self.table_view.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # Adjust row height for multiline text
+        self.table_view.verticalHeader().setDefaultSectionSize(60)
+
+        self.table_view.clicked.connect(self.on_table_click)
+        main_layout.addWidget(self.table_view, stretch=2)
+
+        # 4. Detail View (Raw Data)
+        detail_layout = QVBoxLayout()
+        self.lbl_detail_title = QLabel("수신 데이터 상세보기 (Raw Data)")
+        self.lbl_detail_title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        detail_layout.addWidget(self.lbl_detail_title)
+        
+        self.text_raw_data = QTextEdit()
+        self.text_raw_data.setReadOnly(True)
+        self.text_raw_data.setFont(QFont("Courier New", 12))
+        self.text_raw_data.setStyleSheet("background-color: #1e293b; color: #a7f3d0;") # Dark theme, green text
+        self.text_raw_data.setText("표에서 토픽을 클릭하면 상세 데이터가 표시됩니다.")
+        detail_layout.addWidget(self.text_raw_data)
+        
+        main_layout.addLayout(detail_layout, stretch=1)
+
+    def create_summary_card(self, title, value, bg_color, text_color):
+        card = QFrame()
+        card.setStyleSheet(f"QFrame {{ background-color: {bg_color}; border-radius: 8px; border: 1px solid #e5e7eb; }}")
+        layout = QVBoxLayout(card)
+        
+        lbl_title = QLabel(title)
+        lbl_title.setStyleSheet("color: #6b7280; font-size: 12px; font-weight: bold;")
+        layout.addWidget(lbl_title)
+        
+        lbl_val = QLabel(value)
+        lbl_val.setStyleSheet(f"color: {text_color}; font-size: 24px; font-weight: bold;")
+        lbl_val.setObjectName("value_label") # For updating later
+        layout.addWidget(lbl_val)
+        
+        return card
+
+    def update_summary(self):
+        total = len(self.topics)
+        passed = sum(1 for t in self.topics if t.status == ValidationStatus.NORMAL)
+        failed = sum(1 for t in self.topics if t.status not in [ValidationStatus.NORMAL, ValidationStatus.PENDING])
+        
+        self.lbl_total.findChild(QLabel, "value_label").setText(f"{total}개")
+        self.lbl_pass.findChild(QLabel, "value_label").setText(f"{passed}개")
+        self.lbl_fail.findChild(QLabel, "value_label").setText(f"{failed}개")
+
+    @pyqtSlot()
+    def load_csv(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "CSV 파일 선택", "", "CSV Files (*.csv)")
+        if file_path:
+            try:
+                self.topics = load_icd_from_csv(file_path)
+                self.table_model.update_data(self.topics)
+                self.update_summary()
+                
+                self.btn_start.setEnabled(True)
+                self.btn_start.setStyleSheet("background-color: #16a34a; color: white;")
+                self.text_raw_data.setText("표에서 토픽을 클릭하면 상세 데이터가 표시됩니다.")
+                self.lbl_detail_title.setText("수신 데이터 상세보기 (Raw Data)")
+                self.selected_topic_id = None
+                
+            except Exception as e:
+                self.text_raw_data.setText(f"CSV 로드 오류: {str(e)}")
+
+    @pyqtSlot()
+    def start_validation(self):
+        if not self.topics:
+            return
+            
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.btn_stop.setStyleSheet("background-color: #dc2626; color: white;")
+        self.text_raw_data.setText("검증 시작됨... 데이터를 기다리는 중입니다.")
+        
+        self.worker = Ros2Worker(self.topics)
+        self.worker.update_signal.connect(self.on_validation_update)
+        self.worker.error_signal.connect(self.on_worker_error)
+        self.worker.start()
+
+    @pyqtSlot()
+    def stop_validation(self):
+        self.btn_start.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.setStyleSheet("")
+        self.btn_report.setEnabled(True)
+        
+        if self.worker:
+            self.worker.stop()
+            self.worker = None
+
+    @pyqtSlot(dict)
+    def on_validation_update(self, results):
+        for topic in self.topics:
+            if topic.name in results:
+                res = results[topic.name]
+                topic.actual_hz = res["actual_hz"]
+                topic.actual_qos = res["actual_qos"]
+                topic.status = res["status"]
+                topic.missing_dst = res["missing_dst"]
+                topic.raw_data = res["raw"]
+                
+                # Update text view if this topic is selected
+                if self.selected_topic_id == topic.id:
+                    self.text_raw_data.setText(topic.raw_data)
+                    
+        # Redraw table and summary
+        self.table_model.layoutChanged.emit()
+        self.update_summary()
+
+    @pyqtSlot(str)
+    def on_worker_error(self, error_msg):
+        QMessageBox.critical(self, "ROS2 Error", f"Worker Error: {error_msg}")
+        self.stop_validation()
+
+    @pyqtSlot('QModelIndex')
+    def on_table_click(self, index):
+        if not index.isValid():
+            return
+            
+        row = index.row()
+        topic = self.table_model.get_topic(row)
+        if topic:
+            self.selected_topic_id = topic.id
+            self.lbl_detail_title.setText(f"수신 데이터 상세보기 (Raw Data) - {topic.name}")
+            
+            # Set text color based on status for raw data view
+            if topic.status in [ValidationStatus.NOT_RECEIVED, ValidationStatus.MISSING_DST]:
+                self.text_raw_data.setStyleSheet("background-color: #1e293b; color: #d8b4fe;") # purple
+            elif topic.status == ValidationStatus.QOS_MISMATCH:
+                self.text_raw_data.setStyleSheet("background-color: #1e293b; color: #fb923c;") # orange
+            elif topic.status == ValidationStatus.ERROR:
+                self.text_raw_data.setStyleSheet("background-color: #1e293b; color: #fca5a5;") # red
+            else:
+                self.text_raw_data.setStyleSheet("background-color: #1e293b; color: #6ee7b7;") # green
+                
+            self.text_raw_data.setText(topic.raw_data)
+            
+            # Store selected row to highlight in model
+            self.table_model._selected_row = row
+            self.table_model.layoutChanged.emit()
+
+if __name__ == "__main__":
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())dow()
+    window.show()
+    sys.exit(app.exec())
