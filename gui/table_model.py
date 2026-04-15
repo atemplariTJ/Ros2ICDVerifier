@@ -13,7 +13,7 @@ class TopicTableModel(QAbstractTableModel):
     def __init__(self, data: List[TopicInfo] = None):
         super().__init__()
         self._data = data or []
-        self._headers = ["토픽명 & 타입", "Src (송신) / Dst (수신) 목록", "QoS (목표/실제)", "Hz (목표/실제)", "상태"]
+        self._headers = ["토픽명", "타입", "송신 (Src)", "수신 (Dst)", "QoS (목표/실제)", "Hz (목표/실제)", "상태"]
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
@@ -25,37 +25,40 @@ class TopicTableModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:
-                return f"{topic.name}\n{topic.topic_type}"
+                return topic.name
             elif col == 1:
-                src_str = f"S: {topic.src.name} ({topic.src.node_type})"
-                dst_list = [f"{d.name} ({d.node_type})" for d in topic.dst]
-                dst_str = "D: " + ", ".join(dst_list)
-                if topic.missing_dst:
-                    dst_str += f"\n누락: {', '.join(topic.missing_dst)}"
-                return f"{src_str}\n{dst_str}"
+                return topic.topic_type
             elif col == 2:
+                return f"{topic.src.name}\n({topic.src.node_type})"
+            elif col == 3:
+                dst_list = [f"{d.name}({d.node_type})" for d in topic.dst]
+                dst_str = ", ".join(dst_list)
+                if topic.missing_dst:
+                    dst_str += f"\n[누락: {', '.join(topic.missing_dst)}]"
+                return dst_str
+            elif col == 4:
                 actual_qos = topic.actual_qos if topic.actual_qos else "-"
                 return f"{topic.target_qos}\n{actual_qos}"
-            elif col == 3:
+            elif col == 5:
                 actual_hz = f"{topic.actual_hz:.1f}" if topic.actual_hz is not None else "-"
                 return f"{topic.target_hz} Hz\n{actual_hz} Hz"
-            elif col == 4:
+            elif col == 6:
                 return topic.status.value
 
         elif role == Qt.ItemDataRole.TextAlignmentRole:
-            if col in [2, 3, 4]:
+            if col in [4, 5, 6]:
                 return Qt.AlignmentFlag.AlignCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
 
         elif role == Qt.ItemDataRole.BackgroundRole:
             # Highlight missing dst
-            if col == 1 and topic.missing_dst:
+            if col == 3 and topic.missing_dst:
                 return QColor("#fee2e2") # light red
             # Highlight QoS mismatch
-            if col == 2 and topic.actual_qos and topic.actual_qos != topic.target_qos:
+            if col == 4 and topic.actual_qos and topic.actual_qos != topic.target_qos:
                 return QColor("#ffedd5") # light orange
                 
-            if col == 4:
+            if col == 6:
                 color_hex = STATUS_COLORS.get(topic.status, {}).get("bg", "#ffffff")
                 return QColor(color_hex)
             
@@ -63,7 +66,7 @@ class TopicTableModel(QAbstractTableModel):
                 return QColor("#eff6ff") # light blue for selection
 
         elif role == Qt.ItemDataRole.ForegroundRole:
-            if col == 4:
+            if col == 6:
                 color_hex = STATUS_COLORS.get(topic.status, {}).get("text", "#000000")
                 return QColor(color_hex)
             return QColor("#000000") # Force black text for other columns

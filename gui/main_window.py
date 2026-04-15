@@ -3,15 +3,17 @@ import os
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLabel, QTableView, QHeaderView, QTextEdit, QFileDialog, QFrame,
-    QAbstractItemView
+    QAbstractItemView, QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QFont, QColor, QPalette
+from datetime import datetime
 
 # Add parent dir to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gui.table_model import TopicTableModel
 from core.csv_parser import load_icd_from_csv
+from core.report_excel import export_to_excel
 from config.settings import ValidationStatus
 from PyQt6.QtWidgets import QMessageBox
 from ros2.worker import Ros2Worker
@@ -25,6 +27,7 @@ class MainWindow(QMainWindow):
         self.topics = []
         self.selected_topic_id = None
         self.worker = None
+        self.hz_margin = 0.2 # Default 20%
         
         self.setup_ui()
 
@@ -39,12 +42,25 @@ class MainWindow(QMainWindow):
         # 1. Header (Buttons)
         header_layout = QHBoxLayout()
         
-        title_label = QLabel("ROS2 ICD 검증 대시보드 (다중 Dst 지원)")
+        title_label = QLabel("ROS2 ICD 검증 대시보드")
         title_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
-        self.btn_load_csv = QPushButton("CSV 불러오기 (초기화)")
+        # Margin Config
+        margin_layout = QHBoxLayout()
+        margin_label = QLabel("주기 오차 허용 (%):")
+        self.spin_margin = QDoubleSpinBox()
+        self.spin_margin.setRange(0, 100)
+        self.spin_margin.setValue(20.0)
+        self.spin_margin.setSuffix("%")
+        self.spin_margin.valueChanged.connect(self.on_margin_changed)
+        margin_layout.addWidget(margin_label)
+        margin_layout.addWidget(self.spin_margin)
+        header_layout.addLayout(margin_layout)
+        header_layout.addSpacing(20)
+
+        self.btn_load_csv = QPushButton("CSV 불러오기")
         self.btn_start = QPushButton("검증 시작")
         self.btn_stop = QPushButton("검증 중지")
         self.btn_report = QPushButton("보고서 저장")
@@ -56,7 +72,7 @@ class MainWindow(QMainWindow):
         self.btn_load_csv.clicked.connect(self.load_csv)
         self.btn_start.clicked.connect(self.start_validation)
         self.btn_stop.clicked.connect(self.stop_validation)
-        # self.btn_report.clicked.connect(...)
+        self.btn_report.clicked.connect(self.save_report)
 
         for btn in [self.btn_load_csv, self.btn_start, self.btn_stop, self.btn_report]:
             btn.setMinimumHeight(35)
@@ -88,11 +104,13 @@ class MainWindow(QMainWindow):
         self.table_view.setStyleSheet("alternate-background-color: #f9fafb; background-color: #ffffff; color: #000000;")
         
         header = self.table_view.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch) # Topic
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Type
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) # Src
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # Dst
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # QoS
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # Hz
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) # Status
         
         # Adjust row height for multiline text
         self.table_view.verticalHeader().setDefaultSectionSize(60)
@@ -131,6 +149,33 @@ class MainWindow(QMainWindow):
         
         return card
 
+    @pyqtSlot(float)
+    def on_margin_changed(self, value):
+        self.hz_margin = value / 100.0
+        if self.worker and self.worker.node:
+            self.worker.node.set_hz_margin(self.hz_margin)
+
+    @pyqtSlot()
+    def save_report(self):
+        if not self.topics:
+            return
+            
+        # Default path to project root
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        default_filename = f"ICD_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        default_path = os.path.join(root_dir, default_filename)
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "보고서 저장", default_path, "Excel Files (*.xlsx)"
+        )
+        
+        if file_path:
+            try:
+                export_to_excel(self.topics, file_path)
+                QMessageBox.information(self, "저장 완료", f"보고서가 저장되었습니다:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "저장 실패", f"보고서 저장 중 오류 발생: {e}")
+
     def update_summary(self):
         total = len(self.topics)
         passed = sum(1 for t in self.topics if t.status == ValidationStatus.NORMAL)
@@ -168,7 +213,7 @@ class MainWindow(QMainWindow):
         self.btn_stop.setStyleSheet("background-color: #dc2626; color: white;")
         self.text_raw_data.setText("검증 시작됨... 데이터를 기다리는 중입니다.")
         
-        self.worker = Ros2Worker(self.topics)
+        self.worker = Ros2Worker(self.topics, self.hz_margin)
         self.worker.update_signal.connect(self.on_validation_update)
         self.worker.error_signal.connect(self.on_worker_error)
         self.worker.start()

@@ -14,7 +14,13 @@ class VerifierNode(Node):
         super().__init__('icd_verifier_node')
         self.subscriptions_dict = {}
         self.topic_states = {} # {topic_name: {"count": 0, "first_time": 0, "last_time": 0, "actual_hz": 0, "raw": "", "missing_dst": []}}
+        self.hz_margin = 0.2 # Default 20%
         
+    def set_hz_margin(self, margin_fraction):
+        """Updates the tolerance margin for HZ validation (e.g., 0.1 for 10%)"""
+        self.hz_margin = margin_fraction
+        self.get_logger().info(f"Hz Margin updated to {self.hz_margin * 100}%")
+
     def update_topics_to_verify(self, topics: list[TopicInfo]):
         # Remove old subscriptions
         for topic_name, sub in self.subscriptions_dict.items():
@@ -169,7 +175,7 @@ class VerifierNode(Node):
                     status = ValidationStatus.QOS_MISMATCH
                 elif state["missing_dst"]:
                     status = ValidationStatus.MISSING_DST
-                elif state["actual_hz"] > 0 and (hz_diff / target.target_hz) > 0.2: # 20% margin
+                elif state["actual_hz"] > 0 and (hz_diff / target.target_hz) > self.hz_margin:
                     status = ValidationStatus.HZ_MISMATCH
                 elif state["actual_hz"] > 0:
                     status = ValidationStatus.NORMAL
