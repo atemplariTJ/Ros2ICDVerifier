@@ -26,7 +26,8 @@ class MainWindow(QMainWindow):
         self.topics = []
         self.selected_topic_id = None
         self.worker = None
-        self.hz_margin = 0.2  # Default 20%
+        self.hz_margin = 0.2   # Default 20%
+        self.hz_window = 5.0   # Default measurement window: 5 sec
 
         self.setup_ui()
 
@@ -53,6 +54,17 @@ class MainWindow(QMainWindow):
         self.spin_margin.valueChanged.connect(self.on_margin_changed)
         header_layout.addWidget(margin_label)
         header_layout.addWidget(self.spin_margin)
+        header_layout.addSpacing(12)
+
+        window_label = QLabel("Hz 측정 윈도우 (초):")
+        self.spin_hz_window = QDoubleSpinBox()
+        self.spin_hz_window.setRange(1.0, 60.0)
+        self.spin_hz_window.setSingleStep(1.0)
+        self.spin_hz_window.setValue(5.0)
+        self.spin_hz_window.setSuffix("s")
+        self.spin_hz_window.valueChanged.connect(self.on_hz_window_changed)
+        header_layout.addWidget(window_label)
+        header_layout.addWidget(self.spin_hz_window)
         header_layout.addSpacing(20)
 
         self.btn_load_csv = QPushButton("CSV 불러오기")
@@ -174,6 +186,12 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.node:
             self.worker.node.set_hz_margin(self.hz_margin)
 
+    @pyqtSlot(float)
+    def on_hz_window_changed(self, value):
+        self.hz_window = value
+        if self.worker and self.worker.node:
+            self.worker.node.set_hz_window(self.hz_window)
+
     @pyqtSlot()
     def load_csv(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "CSV 파일 선택", "", "CSV Files (*.csv)")
@@ -202,7 +220,7 @@ class MainWindow(QMainWindow):
         self.btn_stop.setStyleSheet("background-color: #dc2626; color: white;")
         self.text_raw_data.setText("검증 시작됨... 데이터를 기다리는 중입니다.")
 
-        self.worker = Ros2Worker(self.topics, self.hz_margin)
+        self.worker = Ros2Worker(self.topics, self.hz_margin, self.hz_window)
         self.worker.update_signal.connect(self.on_validation_update)
         self.worker.error_signal.connect(self.on_worker_error)
         self.worker.start()

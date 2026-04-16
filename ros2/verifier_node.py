@@ -13,12 +13,18 @@ class VerifierNode(Node):
         super().__init__('icd_verifier_node')
         self.subscriptions_dict = {}
         self.topic_states = {}
-        self.hz_margin = 0.2  # Default 20%
+        self.hz_margin = 0.2   # Default 20%
+        self.hz_window = 5.0   # Default measurement window: 5 seconds
 
     def set_hz_margin(self, margin_fraction):
         """Updates the tolerance margin for HZ validation (e.g., 0.1 for 10%)"""
         self.hz_margin = margin_fraction
         self.get_logger().info(f"Hz Margin updated to {self.hz_margin * 100}%")
+
+    def set_hz_window(self, window_sec: float):
+        """Updates the rolling measurement window size in seconds."""
+        self.hz_window = max(1.0, window_sec)
+        self.get_logger().info(f"Hz Window updated to {self.hz_window}s")
 
     def update_topics_to_verify(self, topics: list[TopicInfo]):
         # Remove old subscriptions
@@ -92,8 +98,8 @@ class VerifierNode(Node):
                 state["actual_hz"] = state["count"] / elapsed
             state["last_time"] = current_time
 
-            # Reset moving average window every 5 seconds to reflect current hz
-            if elapsed > 5.0:
+            # Reset rolling window once elapsed exceeds hz_window
+            if elapsed > self.hz_window:
                 state["first_time"] = current_time
                 state["count"] = 1
 
