@@ -28,7 +28,6 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.hz_margin = 0.2   # Default 20%
         self.hz_window = 5.0   # Default measurement window: 5 sec
-        self._last_table_width = 0  # 컬럼 비례 스케일용
 
         self.setup_ui()
 
@@ -320,22 +319,34 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._scale_columns()
+        self._fit_columns()
 
-    def _scale_columns(self):
-        """창 크기 변경 시 현재 컬럼 비율을 유지하며 비례 스케일."""
-        new_total = self.table_view.viewport().width()
-        if new_total <= 0:
+    def _fit_columns(self):
+        """
+        컬럼 너비 자동 조정:
+          - 콘텐츠 고정 컬럼(2~7): 텍스트 너비에 맞게 자동 핏
+          - 가변 컬럼(0 토픽명, 1 연결노드): 나머지 공간을 55:45로 분배
+        """
+        total = self.table_view.viewport().width()
+        if total <= 0:
             return
 
         header = self.table_view.horizontalHeader()
-        if self._last_table_width > 0 and new_total != self._last_table_width:
-            scale = new_total / self._last_table_width
-            for col in range(header.count()):
-                new_w = max(60, int(header.sectionSize(col) * scale))
-                header.resizeSection(col, new_w)
+        n_cols = header.count()
 
-        self._last_table_width = new_total
+        # 콘텐츠 컬럼(2~끝) → resizeColumnToContents (델리게이트 sizeHint 사용)
+        for col in range(2, n_cols):
+            self.table_view.resizeColumnToContents(col)
+            if header.sectionSize(col) < 60:   # 최소 너비 보장
+                header.resizeSection(col, 60)
+
+        # 남은 너비를 토픽명(0)·연결노드(1)에 55:45로 분배
+        used = sum(header.sectionSize(col) for col in range(2, n_cols))
+        remaining = total - used
+        if remaining < 160:          # 두 컬럼 합쳐 최소 160px
+            remaining = 160
+        header.resizeSection(0, int(remaining * 0.55))
+        header.resizeSection(1, remaining - int(remaining * 0.55))
 
 
 if __name__ == "__main__":
