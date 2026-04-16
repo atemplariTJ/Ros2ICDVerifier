@@ -105,18 +105,22 @@ class MainWindow(QMainWindow):
         )
 
         header = self.table_view.horizontalHeader()
-        # Col 0: 토픽명 — stretch (topic name tends to be long)
+        header.setMinimumSectionSize(80)
+
+        # Col 0: 토픽명 — stretch
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        # Col 1: 연결 노드 — stretch (node names vary)
+        # Col 1: 연결 노드 — stretch
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        # Col 2: QoS 검증 — fixed reasonable width
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        # Col 3: Hz 검증 — fixed reasonable width
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        # Col 2: QoS 검증 — interactive (user can resize), initial width 200px
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.resizeSection(2, 200)
+        # Col 3: Hz 검증 — interactive, initial width 170px
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.resizeSection(3, 170)
         # Col 4: 상태 — compact badge
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
 
-        self.table_view.verticalHeader().setDefaultSectionSize(72)
+        self.table_view.verticalHeader().setDefaultSectionSize(80)
 
         self.table_view.clicked.connect(self.on_table_click)
         main_layout.addWidget(self.table_view, stretch=2)

@@ -56,7 +56,7 @@ class HtmlDelegate(QStyledItemDelegate):
 
         doc = QTextDocument()
         doc.setHtml(html_text)
-        doc.setTextWidth(max(option.rect.width(), 140))
+        doc.setTextWidth(max(option.rect.width(), 180))
         return QSize(int(doc.idealWidth()), int(doc.size().height()) + 8)
 
 
@@ -68,7 +68,7 @@ _CROSS = "&#10007;"   # ✗
 _GREEN = "#15803d"
 _RED   = "#b91c1c"
 _GRAY  = "#6b7280"
-_FONT  = "font-size:11px; font-family:Arial;"
+_FONT  = "font-size:12px; font-family:Arial; line-height:1.5;"
 
 
 def _span(color: str, text: str) -> str:
@@ -102,7 +102,7 @@ def build_connected_nodes_html(topic: TopicInfo) -> str:
         )
 
     body = "<br/>".join(lines)
-    return f'<div style="{_FONT} padding:3px;">{body}</div>'
+    return f'<div style="{_FONT} padding:5px;">{body}</div>'
 
 
 def build_qos_html(topic: TopicInfo) -> str:
@@ -134,7 +134,7 @@ def build_qos_html(topic: TopicInfo) -> str:
 
     target_line = f'목표: <b>{target}</b>'
     body = "<br/>".join([target_line, pub_line, sub_line])
-    return f'<div style="{_FONT} padding:3px;">{body}</div>'
+    return f'<div style="{_FONT} padding:5px;">{body}</div>'
 
 
 def build_hz_html(topic: TopicInfo) -> str:
@@ -171,7 +171,7 @@ def build_hz_html(topic: TopicInfo) -> str:
                 hz_line = f'실제: {_span(_RED, _CROSS + " " + hz_text)}'
         body = "<br/>".join([target_line, hz_line])
 
-    return f'<div style="{_FONT} padding:3px;">{body}</div>'
+    return f'<div style="{_FONT} padding:5px;">{body}</div>'
 
 
 # ---------------------------------------------------------------------------
