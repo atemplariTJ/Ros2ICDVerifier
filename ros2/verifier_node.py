@@ -3,6 +3,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
 import time
 import yaml
+from collections import deque
 from rosidl_runtime_py.utilities import get_message
 
 from core.models import TopicInfo
@@ -36,9 +37,8 @@ class VerifierNode(Node):
         # Subscribe to new ones
         for topic in topics:
             self.topic_states[topic.name] = {
-                "count": 0,
-                "first_time": None,
-                "last_time": None,
+                "count": 0,          # total received (non-periodic 판단용)
+                "timestamps": deque(),  # rolling window timestamps
                 "actual_hz": 0.0,
                 "raw": "수신 대기중...",
                 "missing_dst": [],
@@ -84,24 +84,21 @@ class VerifierNode(Node):
     def message_callback(self, topic_name, msg):
         state = self.topic_states[topic_name]
 
-        current_time = time.time()
+        now = time.time()
+        state["count"] += 1
 
-        if state["first_time"] is None:
-            state["first_time"] = current_time
-            state["last_time"] = current_time
-            state["count"] = 1
-            state["actual_hz"] = 0.0
-        else:
-            state["count"] += 1
-            elapsed = current_time - state["first_time"]
-            if elapsed > 0:
-                state["actual_hz"] = state["count"] / elapsed
-            state["last_time"] = current_time
+        # Rolling window: 타임스탬프 추가 후 윈도우 밖의 오래된 것 제거
+        ts: deque = state["timestamps"]
+        ts.append(now)
+        while ts and (now - ts[0]) > self.hz_window:
+            ts.popleft()
 
-            # Reset rolling window once elapsed exceeds hz_window
-            if elapsed > self.hz_window:
-                state["first_time"] = current_time
-                state["count"] = 1
+        # 윈도우 안에 샘플이 2개 이상이면 Hz 계산
+        # Hz = (샘플 수 - 1) / (최신 - 최초)  ← 간격(interval) 기반으로 정확
+        if len(ts) >= 2:
+            window_elapsed = ts[-1] - ts[0]
+            if window_elapsed > 0:
+                state["actual_hz"] = (len(ts) - 1) / window_elapsed
 
         # Parse message content for raw view
         try:
