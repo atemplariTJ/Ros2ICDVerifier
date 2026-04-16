@@ -117,24 +117,36 @@ class VerifierNode(Node):
             state["header_src"] = str(hdr.src)
             state["header_dst"] = [str(d) for d in hdr.dst]
 
-    def msg_to_dict(self, msg):
-        """Recursively convert ROS message to dictionary."""
+    def msg_to_dict(self, msg, _depth: int = 0):
+        """Recursively convert ROS message to dictionary (max depth 20)."""
+        if _depth > 20:
+            return "<max depth reached>"
+
         if not hasattr(msg, 'get_fields_and_field_types'):
             if isinstance(msg, bytes):
                 return "<bytes>"
-            if isinstance(msg, (list, tuple)) or hasattr(msg, '__iter__'):
+            if isinstance(msg, (list, tuple)):
+                if len(msg) > 100:
+                    return f"<array of length {len(msg)}>"
+                return [self.msg_to_dict(m, _depth + 1) for m in msg]
+            # numpy arrays and other iterables
+            if hasattr(msg, '__iter__') and not isinstance(msg, str):
                 try:
-                    if len(msg) > 100:
-                        return f"<array of length {len(msg)}>"
-                    return [self.msg_to_dict(m) for m in msg]
-                except TypeError:
-                    return str(msg)
+                    items = list(msg)
+                    if len(items) > 100:
+                        return f"<array of length {len(items)}>"
+                    return [self.msg_to_dict(m, _depth + 1) for m in items]
+                except Exception:
+                    pass
             return msg
 
         d = {}
         for field_name, _ in msg.get_fields_and_field_types().items():
-            val = getattr(msg, field_name)
-            d[field_name] = self.msg_to_dict(val)
+            try:
+                val = getattr(msg, field_name)
+                d[field_name] = self.msg_to_dict(val, _depth + 1)
+            except Exception as e:
+                d[field_name] = f"<error: {e}>"
         return d
 
     def _get_qos_str(self, reliability) -> str:
@@ -219,6 +231,7 @@ class VerifierNode(Node):
                 "actual_pub_qos": pub_qos,
                 "actual_sub_qos": sub_qos,
                 "status": status,
+                "received": count > 0,
                 "missing_dst": [],              # src/dst validation removed
                 "connected_publishers": pub_nodes,
                 "connected_subscribers": sub_nodes,

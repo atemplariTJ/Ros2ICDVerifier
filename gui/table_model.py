@@ -175,6 +175,69 @@ def build_hz_html(topic: TopicInfo) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Status badge helpers  (text, bg_hex, fg_hex)
+# ---------------------------------------------------------------------------
+_B_GREEN  = ("#dcfce7", "#166534")
+_B_ORANGE = ("#ffedd5", "#9a3412")
+_B_YELLOW = ("#fef9c3", "#854d0e")
+_B_PINK   = ("#fce7f3", "#9d174d")
+_B_BLUE   = ("#eff6ff", "#1d4ed8")
+_B_GRAY   = ("#f3f4f6", "#4b5563")
+_B_RED    = ("#fee2e2", "#991b1b")
+
+
+def _reception_badge(topic: "TopicInfo"):
+    if topic.received:
+        return ("수신됨", *_B_GREEN)
+    return ("미수신", *_B_PINK)
+
+
+def _qos_badge(topic: "TopicInfo"):
+    pub    = topic.actual_pub_qos or "-"
+    sub    = topic.actual_sub_qos or "-"
+    target = topic.target_qos
+    if pub in ("-", "Unknown"):
+        return ("-", *_B_GRAY)
+    if pub.lower() != target.lower():
+        return ("불일치", *_B_ORANGE)
+    if pub == "BestEffort" and sub == "Reliable":
+        return ("비호환", *_B_ORANGE)
+    if sub not in ("-", "Unknown") and sub.lower() != target.lower():
+        return ("불일치", *_B_ORANGE)
+    return ("정상", *_B_GREEN)
+
+
+def _hz_badge(topic: "TopicInfo"):
+    if topic.target_hz == 0:
+        if topic.received:
+            return ("비주기·정상", *_B_BLUE)
+        return ("미수신", *_B_PINK)
+    if topic.status == ValidationStatus.HZ_MISMATCH:
+        return ("주기미달", *_B_YELLOW)
+    if topic.actual_hz and topic.actual_hz > 0:
+        return ("정상", *_B_GREEN)
+    return ("대기중", *_B_GRAY)
+
+
+def _summary_badge(topic: "TopicInfo"):
+    s = topic.status
+    if s == ValidationStatus.NORMAL:
+        return ("정상", *_B_GREEN)
+    if s == ValidationStatus.PENDING:
+        return ("대기중", *_B_GRAY)
+    if s == ValidationStatus.NOT_RECEIVED:
+        return ("미수신", *_B_PINK)
+    if s == ValidationStatus.QOS_MISMATCH:
+        return ("QoS불일치", *_B_ORANGE)
+    if s == ValidationStatus.HZ_MISMATCH:
+        return ("주기미달", *_B_YELLOW)
+    return ("오류", *_B_RED)
+
+
+_BADGE_FN = [_reception_badge, _qos_badge, _hz_badge, _summary_badge]
+
+
+# ---------------------------------------------------------------------------
 # Table Model
 # ---------------------------------------------------------------------------
 class TopicTableModel(QAbstractTableModel):
@@ -182,12 +245,16 @@ class TopicTableModel(QAbstractTableModel):
     Columns:
       0  토픽명   (topic name + type, 2-line)
       1  연결 노드 (actual publishers / subscribers, robot IDs)
-      2  QoS 검증  (target / pub / sub with ✓/✗)
-      3  Hz 검증   (target / actual with ✓/✗)
-      4  상태      (overall status badge)
+      2  QoS 검증  (target / pub / sub with ✓/✗, HTML)
+      3  Hz 검증   (target / actual with ✓/✗, HTML)
+      4  수신      (status badge)
+      5  QoS       (status badge)
+      6  주기      (status badge)
+      7  종합      (summary badge)
     """
 
-    HEADERS = ["토픽명", "연결 노드", "QoS 검증", "Hz 검증", "상태"]
+    HEADERS = ["토픽명", "연결 노드", "QoS 검증", "Hz 검증", "수신", "QoS", "주기", "종합"]
+    _BADGE_COLS = (4, 5, 6, 7)
 
     def __init__(self, data: List[TopicInfo] = None):
         super().__init__()
@@ -211,25 +278,26 @@ class TopicTableModel(QAbstractTableModel):
                 return build_qos_html(topic)
             elif col == 3:
                 return build_hz_html(topic)
-            elif col == 4:
-                return topic.status.value
+            elif col in self._BADGE_COLS:
+                text, _bg, _fg = _BADGE_FN[col - 4](topic)
+                return text
 
         elif role == Qt.ItemDataRole.TextAlignmentRole:
-            if col in (2, 3, 4):
+            if col in (2, 3) or col in self._BADGE_COLS:
                 return Qt.AlignmentFlag.AlignCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
 
         elif role == Qt.ItemDataRole.BackgroundRole:
-            if col == 4:
-                color_hex = STATUS_COLORS.get(topic.status, {}).get("bg", "#ffffff")
-                return QColor(color_hex)
+            if col in self._BADGE_COLS:
+                _text, bg, _fg = _BADGE_FN[col - 4](topic)
+                return QColor(bg)
             if row == self._selected_row:
                 return QColor("#eff6ff")
 
         elif role == Qt.ItemDataRole.ForegroundRole:
-            if col == 4:
-                color_hex = STATUS_COLORS.get(topic.status, {}).get("text", "#000000")
-                return QColor(color_hex)
+            if col in self._BADGE_COLS:
+                _text, _bg, fg = _BADGE_FN[col - 4](topic)
+                return QColor(fg)
             return QColor("#000000")
 
         return None

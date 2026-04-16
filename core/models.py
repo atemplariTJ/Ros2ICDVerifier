@@ -25,6 +25,7 @@ class TopicInfo:
     actual_sub_qos: Optional[str] = None    # Subscriber QoS
     actual_hz: Optional[float] = None
     status: ValidationStatus = ValidationStatus.PENDING
+    received: bool = False                  # 메시지 수신 여부
     missing_dst: List[str] = field(default_factory=list)  # kept for compat, not validated
     raw_data: str = "대기중..."
 

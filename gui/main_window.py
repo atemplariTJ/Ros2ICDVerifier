@@ -120,7 +120,8 @@ class MainWindow(QMainWindow):
         header.setMinimumSectionSize(60)
 
         # 모든 컬럼 사용자 조절 가능(Interactive) + 초기 너비 설정
-        initial_widths = [220, 200, 200, 170, 100]  # 토픽명, 연결노드, QoS, Hz, 상태
+        # 토픽명, 연결노드, QoS검증, Hz검증, 수신, QoS, 주기, 종합
+        initial_widths = [220, 200, 200, 170, 75, 75, 75, 75]
         for col, width in enumerate(initial_widths):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
             header.resizeSection(col, width)
@@ -242,10 +243,11 @@ class MainWindow(QMainWindow):
             if topic.name in results:
                 res = results[topic.name]
                 topic.actual_hz          = res["actual_hz"]
-                topic.actual_qos         = res["actual_qos"]          # backward compat
+                topic.actual_qos         = res["actual_qos"]
                 topic.actual_pub_qos     = res["actual_pub_qos"]
                 topic.actual_sub_qos     = res["actual_sub_qos"]
                 topic.status             = res["status"]
+                topic.received           = res["received"]
                 topic.missing_dst        = res["missing_dst"]
                 topic.connected_publishers  = res["connected_publishers"]
                 topic.connected_subscribers = res["connected_subscribers"]
