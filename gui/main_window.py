@@ -28,6 +28,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.hz_margin = 0.2   # Default 20%
         self.hz_window = 5.0   # Default measurement window: 5 sec
+        self._last_table_width = 0  # 컬럼 비례 스케일용
 
         self.setup_ui()
 
@@ -314,6 +315,27 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "저장 완료", f"보고서가 저장되었습니다:\n{file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "저장 실패", f"보고서 저장 중 오류 발생: {e}")
+
+    # ── Window Resize ──────────────────────────────────────────────────────
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._scale_columns()
+
+    def _scale_columns(self):
+        """창 크기 변경 시 현재 컬럼 비율을 유지하며 비례 스케일."""
+        new_total = self.table_view.viewport().width()
+        if new_total <= 0:
+            return
+
+        header = self.table_view.horizontalHeader()
+        if self._last_table_width > 0 and new_total != self._last_table_width:
+            scale = new_total / self._last_table_width
+            for col in range(header.count()):
+                new_w = max(60, int(header.sectionSize(col) * scale))
+                header.resizeSection(col, new_w)
+
+        self._last_table_width = new_total
 
 
 if __name__ == "__main__":
