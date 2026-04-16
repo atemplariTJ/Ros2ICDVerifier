@@ -105,20 +105,15 @@ class MainWindow(QMainWindow):
         )
 
         header = self.table_view.horizontalHeader()
-        header.setMinimumSectionSize(80)
+        header.setMinimumSectionSize(60)
 
-        # Col 0: 토픽명 — stretch
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        # Col 1: 연결 노드 — stretch
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        # Col 2: QoS 검증 — interactive (user can resize), initial width 200px
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(2, 200)
-        # Col 3: Hz 검증 — interactive, initial width 170px
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(3, 170)
-        # Col 4: 상태 — compact badge
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        # 모든 컬럼 사용자 조절 가능(Interactive) + 초기 너비 설정
+        initial_widths = [220, 200, 200, 170, 100]  # 토픽명, 연결노드, QoS, Hz, 상태
+        for col, width in enumerate(initial_widths):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            header.resizeSection(col, width)
+
+        header.setStretchLastSection(False)
 
         self.table_view.verticalHeader().setDefaultSectionSize(80)
 
